@@ -30,10 +30,11 @@ import securesocial.core.providers.utils._
 import org.joda.time.DateTime
 import play.api.i18n.Messages
 import securesocial.core.providers.Token
-import scala.Some
 import securesocial.core.IdentityId
 import scala.language.reflectiveCalls
 
+import scala.concurrent.Future
+import play.api.libs.concurrent.Execution.Implicits._
 
 /**
  * A controller to handle user registration.
@@ -49,6 +50,7 @@ object Registration extends Controller {
   val SignUpDone = "securesocial.signup.signUpDone"
   val PasswordUpdated = "securesocial.password.passwordUpdated"
   val ErrorUpdatingPassword = "securesocial.password.error"
+  val ErrorSendingEmail = "securesocial.signup.email.error"
 
   val UserName = "userName"
   val FirstName = "firstName"
@@ -167,29 +169,30 @@ object Registration extends Controller {
     (uuid, token)
   }
 
-  def handleStartSignUp = Action { implicit request =>
+  def handleStartSignUp = Action.async { implicit request =>
     if (registrationEnabled) {
       startForm.bindFromRequest.fold (
         errors => {
-          BadRequest(use[TemplatesPlugin].getStartSignUpPage(request , errors))
+          Future.successful(BadRequest(use[TemplatesPlugin].getStartSignUpPage(request , errors)))
         },
         email => {
           // check if there is already an account for this email address
-          UserService.findByEmailAndProvider(email, UsernamePasswordProvider.UsernamePassword) match {
-            case Some(user) => {
-              // user signed up already, send an email offering to login/recover password
-              Mailer.sendAlreadyRegisteredEmail(user)
-            }
-            case None => {
-              val token = createToken(email, isSignUp = true)
-              Mailer.sendSignUpEmail(email, token._1)
-            }
+          UserService.findByEmailAndProvider(email, UsernamePasswordProvider.UsernamePassword).map { user =>
+            // user signed up already, send an email offering to login/recover password
+            Mailer.sendAlreadyRegisteredEmail(user)
+          }.getOrElse {
+            val token = createToken(email, isSignUp = true)
+            Mailer.sendSignUpEmail(email, token._1)
+          }.map { _ =>
+            Redirect(onHandleStartSignUpGoTo).flashing(Success -> Messages(ThankYouCheckEmail), Email -> email)
+          }.recover {
+            case ex =>
+              Redirect(onHandleStartSignUpGoTo).flashing(Error -> Messages(ErrorSendingEmail), Email -> email)
           }
-          Redirect(onHandleStartSignUpGoTo).flashing(Success -> Messages(ThankYouCheckEmail), Email -> email)
         }
       )
     }
-    else NotFound(views.html.defaultpages.notFound.render(request, None))
+    else Future.successful(NotFound(views.html.defaultpages.notFound.render(request, None)))
   }
 
   /**
@@ -249,6 +252,7 @@ object Registration extends Controller {
             val saved = UserService.save(user)
             UserService.deleteToken(t.uuid)
             if ( UsernamePasswordProvider.sendWelcomeEmail ) {
+              // ignore if error
               Mailer.sendWelcomeEmail(saved)
             }
             val eventSession = Events.fire(new SignUpEvent(user)).getOrElse(session)
@@ -268,22 +272,23 @@ object Registration extends Controller {
     Ok(use[TemplatesPlugin].getStartResetPasswordPage(request, startForm ))
   }
 
-  def handleStartResetPassword = Action { implicit request =>
+  def handleStartResetPassword = Action.async { implicit request =>
     startForm.bindFromRequest.fold (
       errors => {
-        BadRequest(use[TemplatesPlugin].getStartResetPasswordPage(request , errors))
+        Future.successful(BadRequest(use[TemplatesPlugin].getStartResetPasswordPage(request , errors)))
       },
       email => {
-        UserService.findByEmailAndProvider(email, UsernamePasswordProvider.UsernamePassword) match {
-          case Some(user) => {
-            val token = createToken(email, isSignUp = false)
-            Mailer.sendPasswordResetEmail(user, token._1)
-          }
-          case None => {
-            Mailer.sendUnkownEmailNotice(email)
-          }
+        UserService.findByEmailAndProvider(email, UsernamePasswordProvider.UsernamePassword).map { user =>
+          val token = createToken(email, isSignUp = false)
+          Mailer.sendPasswordResetEmail(user, token._1)
+        }.getOrElse {
+          Mailer.sendUnkownEmailNotice(email)
+        }.map { _ =>
+          Redirect(onHandleStartResetPasswordGoTo).flashing(Success -> Messages(ThankYouCheckEmail))
+        }.recover {
+          case ex =>
+            Redirect(onHandleStartResetPasswordGoTo).flashing(Error -> Messages(ErrorSendingEmail))
         }
-        Redirect(onHandleStartResetPasswordGoTo).flashing(Success -> Messages(ThankYouCheckEmail))
       }
     )
   }
@@ -305,6 +310,7 @@ object Registration extends Controller {
             val hashed = Registry.hashers.currentHasher.hash(p._1)
             val updated = UserService.save( SocialUser(user).copy(passwordInfo = Some(hashed)) )
             UserService.deleteToken(token)
+            // ignore if error
             Mailer.sendPasswordChangedNotice(updated)
             val eventSession = Events.fire(new PasswordResetEvent(updated))
             ( (Success -> Messages(PasswordUpdated)), eventSession)

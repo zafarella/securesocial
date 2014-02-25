@@ -26,7 +26,9 @@ import play.api.data.Forms._
 import securesocial.core.providers.utils.{Mailer, RoutesHelper, PasswordHasher, PasswordValidator}
 import play.api.i18n.Messages
 import securesocial.core.SecuredRequest
-import scala.Some
+
+import play.api.libs.concurrent.Execution.Implicits.defaultContext
+import scala.concurrent.Future
 
 /**
  * A controller to provide password change functionality
@@ -38,7 +40,9 @@ object PasswordChange extends Controller with SecureSocial {
   val Password1 = "password1"
   val Password2 = "password2"
   val Success = "success"
+  val Error = "error"
   val OkMessage = "securesocial.passwordChange.ok"
+  val ErrorMessage = "securesocial.passwordChange.email.error"
 
   /**
    * The property that specifies the page the user is redirected to after changing the password.
@@ -58,7 +62,7 @@ object PasswordChange extends Controller with SecureSocial {
     maybeHasher.map(_.matches(request.user.passwordInfo.get, currentPassword)).getOrElse(false)
   }
 
-  private def execute[A](f: (SecuredRequest[A], Form[ChangeInfo]) => SimpleResult)(implicit request: SecuredRequest[A]): SimpleResult = {
+  private def execute[A](f: (SecuredRequest[A], Form[ChangeInfo]) => Future[SimpleResult])(implicit request: SecuredRequest[A]): Future[SimpleResult] = {
     val form = Form[ChangeInfo](
       mapping(
         CurrentPassword -> nonEmptyText.verifying(
@@ -76,29 +80,34 @@ object PasswordChange extends Controller with SecureSocial {
     )
 
     if ( request.user.authMethod != AuthenticationMethod.UserPassword) {
-      Forbidden
+      Future.successful(Forbidden)
     } else {
       f(request, form)
     }
   }
 
-  def page = SecuredAction { implicit request =>
+  def page = SecuredAction.async { implicit request =>
     execute { (request: SecuredRequest[AnyContent], form: Form[ChangeInfo]) =>
-      Ok(use[TemplatesPlugin].getPasswordChangePage(request, form))
+      Future.successful(Ok(use[TemplatesPlugin].getPasswordChangePage(request, form)))
     }
   }
 
-  def handlePasswordChange = SecuredAction { implicit request =>
+  def handlePasswordChange = SecuredAction.async { implicit request =>
     execute { (request: SecuredRequest[AnyContent], form: Form[ChangeInfo]) =>
       form.bindFromRequest()(request).fold (
-        errors => BadRequest(use[TemplatesPlugin].getPasswordChangePage(request, errors)),
+        errors => Future.successful(BadRequest(use[TemplatesPlugin].getPasswordChangePage(request, errors))),
         info =>  {
           import scala.language.reflectiveCalls
           val newPasswordInfo = Registry.hashers.currentHasher.hash(info.newPassword)
           val u = UserService.save( SocialUser(request.user).copy( passwordInfo = Some(newPasswordInfo)) )
-          Mailer.sendPasswordChangedNotice(u)(request)
-          val result = Redirect(onHandlePasswordChangeGoTo).flashing(Success -> Messages(OkMessage))
-          Events.fire(new PasswordChangeEvent(u))(request).map( result.withSession(_)).getOrElse(result)
+
+          Mailer.sendPasswordChangedNotice(u)(request, defaultContext).map { _ =>
+            val result = Redirect(onHandlePasswordChangeGoTo).flashing(Success -> Messages(OkMessage))
+            Events.fire(new PasswordChangeEvent(u))(request).map( result.withSession(_)).getOrElse(result)
+          }.recover {
+            case _ => 
+              Redirect(onHandlePasswordChangeGoTo).flashing(Error -> Messages(ErrorMessage))
+          }
         }
       )
     }

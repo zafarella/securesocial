@@ -30,6 +30,7 @@ securesocial.signup.thankYouCheckEmail=Thank you. Please check your email for fu
 securesocial.signup.invalidLink=The link you followed is invalid
 securesocial.signup.signUpDone=Thank you for signing up.  You can log in now
 securesocial.signup.invalidPassword=Enter at least {0} characters
+securesocial.signup.email.error=An error occurred while sending email. Please try again later.
 
 # Password reset
 securesocial.password.title=Reset Password
@@ -46,6 +47,7 @@ securesocial.passwordChange.changeButton=Change
 securesocial.passwordChange.invalidPassword=Invalid password
 securesocial.passwordChange.ok=Your password was changed successfully
 securesocial.passwordChange.okButton=Ok
+securesocial.passwordChange.email.error=An error occurred while sending email. Please try again later.
 
 # Not authorized page
 securesocial.notAuthorized.title=Not Authorized

@@ -25,6 +25,7 @@ import play.api.libs.concurrent.Akka
 import play.api.mvc.RequestHeader
 import play.api.i18n.Messages
 import play.api.templates.{Html, Txt}
+import scala.concurrent.{Future, ExecutionContext}
 
 /**
  * A helper class to send email notifications
@@ -39,55 +40,55 @@ object Mailer {
   val PasswordResetOkSubject = "mails.passwordResetOk.subject"
 
 
-  def sendAlreadyRegisteredEmail(user: Identity)(implicit request: RequestHeader) {
+  def sendAlreadyRegisteredEmail(user: Identity)(implicit request: RequestHeader, ex: ExecutionContext) = {
     val txtAndHtml = use[TemplatesPlugin].getAlreadyRegisteredEmail(user)
     sendEmail(Messages(AlreadyRegisteredSubject), user.email.get, txtAndHtml)
-
   }
 
-  def sendSignUpEmail(to: String, token: String)(implicit request: RequestHeader)  {
+  def sendSignUpEmail(to: String, token: String)(implicit request: RequestHeader, ex: ExecutionContext) = {
     val txtAndHtml = use[TemplatesPlugin].getSignUpEmail(token)
     sendEmail(Messages(SignUpEmailSubject), to, txtAndHtml)
   }
 
-  def sendWelcomeEmail(user: Identity)(implicit request: RequestHeader) {
+  def sendWelcomeEmail(user: Identity)(implicit request: RequestHeader, ex: ExecutionContext) = {
     val txtAndHtml = use[TemplatesPlugin].getWelcomeEmail(user)
     sendEmail(Messages(WelcomeEmailSubject), user.email.get, txtAndHtml)
-
   }
 
-  def sendPasswordResetEmail(user: Identity, token: String)(implicit request: RequestHeader) {
+  def sendPasswordResetEmail(user: Identity, token: String)(implicit request: RequestHeader, ex: ExecutionContext) = {
     val txtAndHtml = use[TemplatesPlugin].getSendPasswordResetEmail(user, token)
     sendEmail(Messages(PasswordResetSubject), user.email.get, txtAndHtml)
   }
 
-  def sendUnkownEmailNotice(email: String)(implicit request: RequestHeader) {
+  def sendUnkownEmailNotice(email: String)(implicit request: RequestHeader, ex: ExecutionContext) = {
     val txtAndHtml = use[TemplatesPlugin].getUnknownEmailNotice()
     sendEmail(Messages(UnknownEmailNoticeSubject), email, txtAndHtml)
   }
 
-  def sendPasswordChangedNotice(user: Identity)(implicit request: RequestHeader) {
+  def sendPasswordChangedNotice(user: Identity)(implicit request: RequestHeader, ex: ExecutionContext) = {
     val txtAndHtml = use[TemplatesPlugin].getPasswordChangedNoticeEmail(user)
     sendEmail(Messages(PasswordResetOkSubject), user.email.get, txtAndHtml)
   }
 
-  private def sendEmail(subject: String, recipient: String, body: (Option[Txt], Option[Html])) {
+  private def sendEmail(subject: String, recipient: String, body: (Option[Txt], Option[Html]))
+                       (implicit ex: ExecutionContext) = {
     import com.typesafe.plugin._
     import scala.concurrent.duration._
-    import play.api.libs.concurrent.Execution.Implicits._
 
     if ( Logger.isDebugEnabled ) {
       Logger.debug("[securesocial] sending email to %s".format(recipient))
       Logger.debug("[securesocial] mail = [%s]".format(body))
     }
 
-    Akka.system.scheduler.scheduleOnce(1.seconds) {
+    Future {
       val mail = use[MailerPlugin].email
       mail.setSubject(subject)
       mail.setRecipient(recipient)
       mail.setFrom(fromAddress)
       // the mailer plugin handles null / empty string gracefully
       mail.send(body._1.map(_.body).getOrElse(""), body._2.map(_.body).getOrElse(""))
+    } recover {
+      case ex => Logger.error("Failure sending email", ex)
     }
   }
 }

@@ -127,8 +127,16 @@ abstract class OAuth2Provider(application: Application, jsonResponse: Boolean = 
           (OAuth2Constants.ResponseType, OAuth2Constants.Code),
           (OAuth2Constants.State, state))
         settings.scope.foreach( s => { params = (OAuth2Constants.Scope, s) :: params })
-        val url = settings.authorizationUrl +
-          params.map( p => p._1 + "=" + URLEncoder.encode(p._2, "UTF-8")).mkString("?", "&", "")
+
+        // split url to separate existing query string, if any
+        val (path, query) = settings.authorizationUrl.split("\\?", 2) match {
+          case parts if parts.size == 2 => (parts(0), parts(1))
+          case parts => (parts(0), "")
+        }
+
+        val url = settings.authorizationUrl + "?" + query + 
+                  params.map(p => p._1 + "=" + URLEncoder.encode(p._2, "UTF-8")).mkString("&")
+
         if ( Logger.isDebugEnabled ) {
           Logger.debug("[securesocial] authorizationUrl = %s".format(settings.authorizationUrl))
           Logger.debug("[securesocial] redirecting to: [%s]".format(url))
