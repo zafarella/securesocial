@@ -2,7 +2,9 @@ import play.Project._
 
 name := "securesocial"
 
-version := "2.1.3-1"
+organization := "com.github.joprice"
+
+version := "2.1.3.1"
 
 libraryDependencies ++= Seq(
   cache,
