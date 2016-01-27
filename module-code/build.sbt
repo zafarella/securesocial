@@ -2,6 +2,7 @@ import play.PlayImport.PlayKeys._
 
 name := "SecureSocial"
 
+TODO: replace with proper version in `Common.scala`
 version := Common.version
 
 scalaVersion := Common.scalaVersion
@@ -40,11 +41,11 @@ publishArtifact in Test := false
 pomIncludeRepository := { _ => false }
 
 publishTo := {
-  val nexus = "https://oss.sonatype.org/"
+  val nexus = "http://nexus.huffpo.net/nexus/content/repositories/"
   if (version.value.trim.endsWith("SNAPSHOT"))
-    Some("snapshots" at nexus + "content/repositories/snapshots")
+    Some("snapshots" at nexus + "/snapshots")
   else
-    Some("releases"  at nexus + "service/local/staging/deploy/maven2")
+    Some("releases"  at nexus + "/releases")
 }
 
 startYear := Some(2012)
@@ -77,3 +78,6 @@ scalacOptions := Seq("-encoding", "UTF-8", "-Xlint", "-deprecation", "-unchecked
 javacOptions ++= Seq("-source", "1.6", "-target", "1.6", "-encoding", "UTF-8",  "-Xlint:-options")
 
 packagedArtifacts += ((artifact in playPackageAssets).value -> playPackageAssets.value)
+
+// todo: remove
+// playScalaSettings
