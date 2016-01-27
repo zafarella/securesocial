@@ -2,7 +2,7 @@ import play.PlayImport.PlayKeys._
 
 name := "SecureSocial"
 
-TODO: replace with proper version in `Common.scala`
+//TODO: replace with proper version in `Common.scala`
 version := Common.version
 
 scalaVersion := Common.scalaVersion
